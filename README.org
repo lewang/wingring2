@@ -1,3 +1,3 @@
-Not sure if this is worth forking.
+* This is probably not worth following for anyone else.
 
 So far, I've just fixed some bad usage of interactive forms.
