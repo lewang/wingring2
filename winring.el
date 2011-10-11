@@ -8,7 +8,7 @@
 ;; Created:  March 1997
 ;; Keywords: frames tools
 
-(defconst winring-version "4.0.1"
+(defconst winring-version "5"
   "winring version number.")
 
 ;; This file is part of GNU Emacs.
@@ -158,23 +158,6 @@
   :type 'integer
   :group 'winring)
 
-(defcustom winring-prompt-on-create 'usually
-  "*When true, prompt for new configuration name on creation.
-If not t and not nil, prompt for configuration name on creation,
-except when creating the initial configuration on a new frame."
-  :type '(radio
-          (const :tag "Never prompt for configuration name" nil)
-          (const :tag "Always prompt for configuration name" t)
-          (const :tag "Prompt for all but initial configuration name"
-                 usually)
-          )
-  :group 'winring)
-
-(defcustom winring-new-config-buffer-name "*scratch*"
-  "*Name of the buffer to switch to when a new configuration is created."
-  :type 'string
-  :group 'winring)
-
 (defcustom winring-show-names nil
   "*If non-nil, window configuration names are shown in the modeline.
 If nil, the name is echoed in the minibuffer when switching window
@@ -202,7 +185,6 @@ If you change this, you must do it before calling `winring-initialize'.")
 (if winring-map
     nil
   (setq winring-map (make-sparse-keymap))
-  (define-key winring-map "b" 'winring-submit-bug-report)
   (define-key winring-map "n" 'winring-new-configuration)
   (define-key winring-map "2" 'winring-duplicate-configuration)
   (define-key winring-map "j" 'winring-jump-to-configuration)
@@ -210,7 +192,6 @@ If you change this, you must do it before calling `winring-initialize'.")
   (define-key winring-map "o" 'winring-next-configuration)
   (define-key winring-map "p" 'winring-prev-configuration)
   (define-key winring-map "r" 'winring-rename-configuration)
-  (define-key winring-map "v" 'winring-version)
   )
 
 
@@ -226,9 +207,13 @@ If you change this, you must do it before calling `winring-initialize'.")
   "History variable for window configuration name prompts.")
 
 (defun winring-next-name ()
-  (let ((name (format "%03d" winring-name-index)))
-    (setq winring-name-index (1+ winring-name-index))
-    name))
+  (case winring-name-index
+    ((1)
+     "default")
+    (t
+     (let ((name (format "%03d" winring-name-index)))
+       (setq winring-name-index (1+ winring-name-index))
+       name))))
 
 
 
@@ -260,9 +245,7 @@ If you change this, you must do it before calling `winring-initialize'.")
 
 (defun winring-create-frame-hook (frame)
   ;; generate the name, but specify the newly created frame
-  (winring-set-name (and (eq winring-prompt-on-create t)
-                         (read-string "Initial window configuration name? "
-                                      nil 'winring-name-history))
+  (winring-set-name (funcall winring-name-generator)
                     frame))
 
 
@@ -332,7 +315,9 @@ not given then the currently selected frame is used."
     (winring-set-name name))
   (force-mode-line-update))
 
-(defun winring-complete-name ()
+(defun winring-complete-name (&optional require-match)
+  (setq require-match (or require-match
+                          'must))
   (let* ((ring (winring-get-ring))
          (n (1- (ring-length ring)))
          (current (winring-name-of-current))
@@ -343,13 +328,16 @@ not given then the currently selected frame is used."
       (setq table (cons (cons (winring-name-of (ring-ref ring n)) n) table)
             n (1- n)))
     (setq name (completing-read
-                (format "Window configuration name (%s): " current)
-                table nil 'must nil 'winring-name-history))
+                (format "Window configuration name (current: %s): " current)
+                table nil require-match nil 'winring-name-history))
     (if (string-equal name "")
         (setq name current))
-    (cdr (assoc name table))))
+    (or (cdr (assoc name table))
+        name)))
 
-(defun winring-read-name (prompt)
+(defun winring-read-name (&optional prompt)
+  (setq prompt (or prompt
+                   "New window configuration name? "))
   (let* ((ring (winring-get-ring))
          (n (1- (ring-length ring)))
          (table (list (winring-name-of-current)))
@@ -367,40 +355,32 @@ not given then the currently selected frame is used."
 ;; Commands
 
 ;;;###autoload
-(defun winring-new-configuration (&optional arg)
+(defun winring-new-configuration (name)
   "Save the current window configuration and create an empty new one.
-The buffer shown in the new empty configuration is defined by
-`winring-new-config-buffer-name'.
 
-With \\[universal-argument] prompt for the new configuration's name.
-Otherwise, the function in `winring-name-generator' will be called to
-get the new configuration's name."
-  (interactive "P")
-  (let ((name (and (or arg winring-prompt-on-create)
-                   (winring-read-name "New window configuration name? "))))
-    ;; Empty string is not allowed
-    (if (string-equal name "")
-        (setq name (funcall winring-name-generator)))
-    (winring-save-current-configuration)
-    (delete-other-windows)
-    (switch-to-buffer winring-new-config-buffer-name)
-    (winring-set-name name)))
+Use empty string to call `winring-name-generator'"
+  (interactive
+   (list (winring-read-name)))
+  ;; Empty string is not allowed
+  (if (string-equal name "")
+      (setq name (funcall winring-name-generator)))
+  (winring-save-current-configuration)
+  (delete-other-windows)
+  (switch-to-buffer winring-new-config-buffer-name)
+  (winring-set-name name))
 
 ;;;###autoload
-(defun winring-duplicate-configuration (&optional arg)
+(defun winring-duplicate-configuration (name)
   "Push the current window configuration on the ring, and duplicate it.
 
-With \\[universal-argument] prompt for the new configuration's name.
-Otherwise, the function in `winring-name-generator' will be called to
-get the new configuration's name."
-  (interactive "P")
-  (let ((name (and (or arg winring-prompt-on-create)
-                   (winring-read-name "New window configuration name? "))))
-    ;; Empty string is not allowed
-    (if (string-equal name "")
-        (setq name (funcall winring-name-generator)))
-    (winring-save-current-configuration)
-    (winring-set-name name)))
+Use empty string to call `winring-name-generator'"
+  (interactive
+   (winring-read-name))
+  ;; Empty string is not allowed
+  (when (zerop (length name))
+    (setq name (funcall winring-name-generator)))
+  (winring-save-current-configuration)
+  (winring-set-name name))
 
 ;;;###autoload
 (defun winring-next-configuration ()
@@ -419,29 +399,31 @@ get the new configuration's name."
     (winring-restore-configuration prev)))
 
 ;;;###autoload
-(defun winring-jump-to-configuration ()
-  "Go to the named window configuration."
-  (interactive)
-  (let* ((ring (winring-get-ring))
-         (index (winring-complete-name))
-         item)
-    ;; if the current configuration was chosen, winring-complete-name
-    ;; returns -1
-    (when (<= 0 index)
-      (setq item (ring-remove ring index))
-      (winring-save-current-configuration)
-      (winring-restore-configuration item))
-    ))
+(defun winring-jump-to-configuration (index)
+  "Go to the named window configuration.
+
+If configuration doesn't exist yet, duplicate current
+configuration and jump to it."
+  (interactive
+   (list (winring-complete-name 'confirm)))
+  (if (stringp index)
+      (winring-duplicate-configuration index)
+    (let* ((ring (winring-get-ring))
+           item)
+      ;; if the current configuration was chosen, winring-complete-name
+      ;; returns -1
+      (when (<= 0 index)
+        (setq item (ring-remove ring index))
+        (winring-save-current-configuration)
+        (winring-restore-configuration item)))))
 
 ;;;###autoload
-(defun winring-delete-configuration (&optional arg)
-  "Delete the current configuration and switch to the next one.
-With \\[universal-argument] prompt for named configuration to delete."
-  (interactive "P")
-  (let ((ring (winring-get-ring))
-        index)
-    (if (or (not arg)
-            (> 0 (setq index (winring-complete-name))))
+(defun winring-delete-configuration (index)
+  "Delete configuration."
+  (interactive
+   (list (winring-complete-name)))
+  (let ((ring (winring-get-ring)))
+    (if (= index -1)
         ;; remove the current one, so install the next one
         (winring-restore-configuration (ring-remove ring))
       ;; otherwise, remove the named one but don't change the current config
@@ -449,56 +431,11 @@ With \\[universal-argument] prompt for named configuration to delete."
       )))
 
 ;;;###autoload
-(defun winring-rename-configuration ()
+(defun winring-rename-configuration (new-name)
   "Rename the current configuration to NAME."
-  (interactive)
-  (winring-set-name (winring-read-name "New window configuration name? ")))
-
-
-
-(defconst winring-help-address "bwarsaw@python.org"
-  "Address accepting bug report submissions.")
-
-(defun winring-version ()
-  "Echo the current version of winring in the minibuffer."
-  (interactive)
-  (message "Using winring version %s" winring-version)
-  ;;(setq zmacs-region-stays t)
-  )
-
-(defun winring-submit-bug-report (comment-p)
-  "Submit via mail a bug report on winring.
-With \\[universal-argument] just send any type of comment."
   (interactive
-   (list (not (y-or-n-p
-               "Is this a bug report? (hit `n' to send other comments) "))))
-  (let ((reporter-prompt-for-summary-p (if comment-p
-                                           "(Very) brief summary: "
-                                         t)))
-    (require 'reporter)
-    (reporter-submit-bug-report
-     winring-help-address                ;address
-     (concat "winring " winring-version) ;pkgname
-     ;; varlist
-     (if comment-p nil
-       '(winring-ring-size
-         winring-new-config-buffer-name
-         winring-show-names
-         winring-name-generator
-         winring-keymap-prefix))
-     nil                                ;pre-hooks
-     nil                                ;post-hooks
-     "Dear Barry,")                     ;salutation
-    (if comment-p nil
-      (set-mark (point))
-      (insert
-       "Please replace this text with a description of your problem.\n\
-The more accurately and succinctly you can describe the\n\
-problem you are encountering, the more likely I can fix it\n\
-in a timely way.\n\n")
-      (exchange-point-and-mark)
-      ;;(setq zmacs-region-stays t)
-      )))
+   (list (winring-read-name)))
+  (winring-set-name new-name))
 
 
 
