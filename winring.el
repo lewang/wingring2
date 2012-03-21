@@ -62,7 +62,7 @@
 
 ;; The following commands are defined:
 ;;
-;;    C-x 7 n -- Create a new window configuration.  The new
+;;    C-x 7 c -- Create a new window configuration.  The new
 ;;               configuration will contain a single buffer, the one
 ;;               named in the variable `winring-new-config-buffer-name'
 ;;
@@ -82,7 +82,7 @@
 ;;               last configuration in the ring.  With C-u, prompts
 ;;               for the name of the configuration to kill.
 ;;
-;;    C-x 7 o -- Go to the next configuration on the ring.
+;;    C-x 7 n -- Go to the next configuration on the ring.
 ;;
 ;;    C-x 7 p -- Go to the previous configuration on the ring.
 ;;
@@ -91,8 +91,6 @@
 ;;               before the sequence.
 ;;
 ;;    C-x 7 r -- Rename the current window configuration.
-;;
-;;    C-x 7 b -- Submit a bug report on winring.
 ;;
 ;;    C-x 7 v -- Echo the winring version.
 
@@ -158,7 +156,7 @@
   :type 'integer
   :group 'winring)
 
-(defcustom winring-show-names nil
+(defcustom winring-show-names t
   "*If non-nil, window configuration names are shown in the modeline.
 If nil, the name is echoed in the minibuffer when switching window
 configurations."
@@ -173,6 +171,13 @@ no arguments to get the new name.  It must return a string."
   :type 'function
   :group 'winring)
 
+(defcustom winring-default-buffer "*scratch*"
+  "Buffer shown when new configuration is created.
+If this value is nil, then the selected-buffer is shown."
+  :type 'string
+  :group 'winring)
+
+
 ;; Not yet customized
 (defvar winring-keymap-prefix "\C-x7"
   "*Prefix key that the `winring-map' is placed on in the global keymap.
@@ -185,11 +190,11 @@ If you change this, you must do it before calling `winring-initialize'.")
 (if winring-map
     nil
   (setq winring-map (make-sparse-keymap))
-  (define-key winring-map "n" 'winring-new-configuration)
+  (define-key winring-map "c" 'winring-new-configuration)
   (define-key winring-map "2" 'winring-duplicate-configuration)
   (define-key winring-map "j" 'winring-jump-to-configuration)
   (define-key winring-map "0" 'winring-delete-configuration)
-  (define-key winring-map "o" 'winring-next-configuration)
+  (define-key winring-map "n" 'winring-next-configuration)
   (define-key winring-map "p" 'winring-prev-configuration)
   (define-key winring-map "r" 'winring-rename-configuration)
   )
@@ -366,7 +371,8 @@ Use empty string to call `winring-name-generator'"
       (setq name (funcall winring-name-generator)))
   (winring-save-current-configuration)
   (delete-other-windows)
-  (switch-to-buffer winring-new-config-buffer-name)
+  (switch-to-buffer (or winring-default-buffer
+                        (current-buffer)))
   (winring-set-name name))
 
 ;;;###autoload
